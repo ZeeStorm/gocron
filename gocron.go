@@ -1,4 +1,4 @@
-// goCron : A Golang Job Scheduling Package.
+// Package gocron : A Golang Job Scheduling Package.
 //
 // An in-process scheduler for periodic jobs that uses the builder pattern
 // for configuration. Schedule lets you run Golang functions periodically
@@ -28,17 +28,30 @@ import (
 	"time"
 )
 
+// UnitSeconds -
+const UnitSeconds = "seconds"
+
+// UnitMinutes -
+const UnitMinutes = "minutes"
+
+// UnitHours -
+const UnitHours = "hours"
+
+// UnitDays -
+const UnitDays = "days"
+
+// UnitWeeks -
+const UnitWeeks = "weeks"
+
 // Time location, default set by the time.Local (*time.Location)
 var loc = time.Local
 
-// Change the time location
+// ChangeLoc - Change the time location
 func ChangeLoc(newLocation *time.Location) {
 	loc = newLocation
 }
 
-// Max number of jobs, hack it if you need.
-const MAXJOBNUM = 10000
-
+// Job -
 type Job struct {
 
 	// pause interval * unit bettween runs
@@ -68,10 +81,10 @@ type Job struct {
 	fparams map[string]([]interface{})
 }
 
-// Create a new job with the time interval.
-func NewJob(intervel uint64) *Job {
+// NewJob - Create a new job with the time interval.
+func NewJob(interval uint64) *Job {
 	return &Job{
-		intervel,
+		interval,
 		"", "", "",
 		time.Unix(0, 0),
 		time.Unix(0, 0), 0,
@@ -86,31 +99,31 @@ func (j *Job) shouldRun() bool {
 	return time.Now().After(j.nextRun)
 }
 
-//Run the job and immdiately reschedulei it
+//Run the job and immediately reschedule it
 func (j *Job) run() (result []reflect.Value, err error) {
+	t := time.Now()
 	f := reflect.ValueOf(j.funcs[j.jobFunc])
 	params := j.fparams[j.jobFunc]
 	if len(params) != f.Type().NumIn() {
-		err = errors.New("The number of param is not adapted.")
+		err = errors.New("the number of param is not adapted")
 		return
 	}
 	in := make([]reflect.Value, len(params))
 	for k, param := range params {
 		in[k] = reflect.ValueOf(param)
 	}
-	result = f.Call(in)
-	j.lastRun = time.Now()
+	go f.Call(in)
+	j.lastRun = t
 	j.scheduleNextRun()
 	return
 }
 
-// for given function fn , get the name of funciton.
+// for given function fn, get the name of function.
 func getFunctionName(fn interface{}) string {
 	return runtime.FuncForPC(reflect.ValueOf((fn)).Pointer()).Name()
 }
 
-// Specifies the jobFunc that should be called every time the job runs
-//
+// Do -Specifies the jobFunc that should be called every time the job runs
 func (j *Job) Do(jobFun interface{}, params ...interface{}) {
 	typ := reflect.TypeOf(jobFun)
 	if typ.Kind() != reflect.Func {
@@ -149,8 +162,8 @@ func formatTime(t string) (hour, min int, err error) {
 	return hour, min, nil
 }
 
-//	s.Every(1).Day().At("10:30").Do(task)
-//	s.Every(1).Monday().At("10:30").Do(task)
+// At - s.Every(1).Day().At("10:30").Do(task)
+// s.Every(1).Monday().At("10:30").Do(task)
 func (j *Job) At(t string) *Job {
 	hour, min, err := formatTime(t)
 	if err != nil {
@@ -160,14 +173,14 @@ func (j *Job) At(t string) *Job {
 	// time.Date(2009, time.November, 10, 23, 0, 0, 0, time.UTC)
 	mock := time.Date(time.Now().Year(), time.Now().Month(), time.Now().Day(), int(hour), int(min), 0, 0, loc)
 
-	if j.unit == "days" {
+	if j.unit == UnitDays {
 		if time.Now().After(mock) {
 			j.lastRun = mock
 		} else {
 			j.lastRun = time.Date(time.Now().Year(), time.Now().Month(), time.Now().Day()-1, hour, min, 0, 0, loc)
 		}
-	} else if j.unit == "weeks" {
-		if time.Now().After(mock) {
+	} else if j.unit == UnitWeeks {
+		if j.startDay != time.Now().Weekday() || (time.Now().After(mock) && j.startDay == time.Now().Weekday()) {
 			i := mock.Weekday() - j.startDay
 			if i < 0 {
 				i = 7 + i
@@ -183,7 +196,7 @@ func (j *Job) At(t string) *Job {
 //Compute the instant when this job should run next
 func (j *Job) scheduleNextRun() {
 	if j.lastRun == time.Unix(0, 0) {
-		if j.unit == "weeks" {
+		if j.unit == UnitWeeks {
 			i := time.Now().Weekday() - j.startDay
 			if i < 0 {
 				i = 7 + i
@@ -200,19 +213,19 @@ func (j *Job) scheduleNextRun() {
 		j.nextRun = j.lastRun.Add(j.period * time.Second)
 	} else {
 		switch j.unit {
-		case "minutes":
+		case UnitMinutes:
 			j.period = time.Duration(j.interval * 60)
 			break
-		case "hours":
+		case UnitHours:
 			j.period = time.Duration(j.interval * 60 * 60)
 			break
-		case "days":
+		case UnitDays:
 			j.period = time.Duration(j.interval * 60 * 60 * 24)
 			break
-		case "weeks":
+		case UnitWeeks:
 			j.period = time.Duration(j.interval * 60 * 60 * 24 * 7)
 			break
-		case "seconds":
+		case UnitSeconds:
 			j.period = time.Duration(j.interval)
 		}
 		j.nextRun = j.lastRun.Add(j.period * time.Second)
@@ -226,7 +239,7 @@ func (j *Job) NextScheduledTime() time.Time {
 
 // the follow functions set the job's unit with seconds,minutes,hours...
 
-// Set the unit with second
+// Second - Set the unit with second
 func (j *Job) Second() (job *Job) {
 	if j.interval != 1 {
 		panic("")
@@ -235,13 +248,13 @@ func (j *Job) Second() (job *Job) {
 	return
 }
 
-// Set the unit with seconds
+// Seconds - Set the unit with seconds
 func (j *Job) Seconds() (job *Job) {
-	j.unit = "seconds"
+	j.unit = UnitSeconds
 	return j
 }
 
-// Set the unit  with minute, which interval is 1
+// Minute - Set the unit  with minute, which interval is 1
 func (j *Job) Minute() (job *Job) {
 	if j.interval != 1 {
 		panic("")
@@ -250,13 +263,13 @@ func (j *Job) Minute() (job *Job) {
 	return
 }
 
-//set the unit with minute
+// Minutes - Set the unit with minute
 func (j *Job) Minutes() (job *Job) {
-	j.unit = "minutes"
+	j.unit = UnitMinutes
 	return j
 }
 
-//set the unit with hour, which interval is 1
+// Hour - Set the unit with hour, which interval is 1
 func (j *Job) Hour() (job *Job) {
 	if j.interval != 1 {
 		panic("")
@@ -265,13 +278,13 @@ func (j *Job) Hour() (job *Job) {
 	return
 }
 
-// Set the unit with hours
+// Hours - Set the unit with hours
 func (j *Job) Hours() (job *Job) {
-	j.unit = "hours"
+	j.unit = UnitHours
 	return j
 }
 
-// Set the job's unit with day, which interval is 1
+// Day - Set the job's unit with day, which interval is 1
 func (j *Job) Day() (job *Job) {
 	if j.interval != 1 {
 		panic("")
@@ -280,13 +293,13 @@ func (j *Job) Day() (job *Job) {
 	return
 }
 
-// Set the job's unit with days
+// Days - Set the job's unit with days
 func (j *Job) Days() *Job {
-	j.unit = "days"
+	j.unit = UnitDays
 	return j
 }
 
-// s.Every(1).Monday().Do(task)
+// Monday - s.Every(1).Monday().Do(task)
 // Set the start day with Monday
 func (j *Job) Monday() (job *Job) {
 	if j.interval != 1 {
@@ -297,7 +310,7 @@ func (j *Job) Monday() (job *Job) {
 	return
 }
 
-// Set the start day with Tuesday
+// Tuesday - Set the start day with Tuesday
 func (j *Job) Tuesday() (job *Job) {
 	if j.interval != 1 {
 		panic("")
@@ -307,7 +320,7 @@ func (j *Job) Tuesday() (job *Job) {
 	return
 }
 
-// Set the start day woth Wednesday
+// Wednesday - Set the start day woth Wednesday
 func (j *Job) Wednesday() (job *Job) {
 	if j.interval != 1 {
 		panic("")
@@ -317,7 +330,7 @@ func (j *Job) Wednesday() (job *Job) {
 	return
 }
 
-// Set the start day with thursday
+// Thursday - Set the start day with thursday
 func (j *Job) Thursday() (job *Job) {
 	if j.interval != 1 {
 		panic("")
@@ -327,7 +340,7 @@ func (j *Job) Thursday() (job *Job) {
 	return
 }
 
-// Set the start day with friday
+// Friday - Set the start day with friday
 func (j *Job) Friday() (job *Job) {
 	if j.interval != 1 {
 		panic("")
@@ -337,7 +350,7 @@ func (j *Job) Friday() (job *Job) {
 	return
 }
 
-// Set the start day with saturday
+// Saturday - Set the start day with saturday
 func (j *Job) Saturday() (job *Job) {
 	if j.interval != 1 {
 		panic("")
@@ -347,7 +360,7 @@ func (j *Job) Saturday() (job *Job) {
 	return
 }
 
-// Set the start day with sunday
+// Sunday - Set the start day with sunday
 func (j *Job) Sunday() (job *Job) {
 	if j.interval != 1 {
 		panic("")
@@ -357,25 +370,22 @@ func (j *Job) Sunday() (job *Job) {
 	return
 }
 
-//Set the units as weeks
+// Weeks - Set the units as weeks
 func (j *Job) Weeks() *Job {
-	j.unit = "weeks"
+	j.unit = UnitWeeks
 	return j
 }
 
-// Class Scheduler, the only data member is the list of jobs.
+// Scheduler  the only data member is the list of jobs.
 type Scheduler struct {
 	// Array store jobs
-	jobs [MAXJOBNUM]*Job
-
-	// Size of jobs which jobs holding.
-	size int
+	jobs []*Job
 }
 
 // Scheduler implements the sort.Interface{} for sorting jobs, by the time nextRun
 
 func (s *Scheduler) Len() int {
-	return s.size
+	return len(s.jobs)
 }
 
 func (s *Scheduler) Swap(i, j int) {
@@ -386,94 +396,81 @@ func (s *Scheduler) Less(i, j int) bool {
 	return s.jobs[j].nextRun.After(s.jobs[i].nextRun)
 }
 
-// Create a new scheduler
+// NewScheduler - Create a new scheduler
 func NewScheduler() *Scheduler {
-	return &Scheduler{[MAXJOBNUM]*Job{}, 0}
+	return &Scheduler{}
 }
 
 // Get the current runnable jobs, which shouldRun is True
-func (s *Scheduler) getRunnableJobs() (running_jobs [MAXJOBNUM]*Job, n int) {
-	runnableJobs := [MAXJOBNUM]*Job{}
-	n = 0
+func (s *Scheduler) getRunnableJobs() []*Job {
+	runnableJobs := []*Job{}
 	sort.Sort(s)
-	for i := 0; i < s.size; i++ {
+	for i := 0; i < len(s.jobs); i++ {
 		if s.jobs[i].shouldRun() {
-
-			runnableJobs[n] = s.jobs[i]
-			//fmt.Println(runnableJobs)
-			n++
+			runnableJobs = append(runnableJobs, s.jobs[i])
 		} else {
 			break
 		}
 	}
-	return runnableJobs, n
+	return runnableJobs
 }
 
-// Datetime when the next job should run.
+// NextRun - Datetime when the next job should run.
 func (s *Scheduler) NextRun() (*Job, time.Time) {
-	if s.size <= 0 {
+	if len(s.jobs) <= 0 {
 		return nil, time.Now()
 	}
 	sort.Sort(s)
 	return s.jobs[0], s.jobs[0].nextRun
 }
 
-// Schedule a new periodic job
+// Every - Schedule a new periodic job
 func (s *Scheduler) Every(interval uint64) *Job {
 	job := NewJob(interval)
-	s.jobs[s.size] = job
-	s.size++
+	s.jobs = append(s.jobs, job)
 	return job
 }
 
-// Run all the jobs that are scheduled to run.
+// RunPending - Run all the jobs that are scheduled to run.
 func (s *Scheduler) RunPending() {
-	runnableJobs, n := s.getRunnableJobs()
+	runnableJobs := s.getRunnableJobs()
 
-	if n != 0 {
-		for i := 0; i < n; i++ {
-			runnableJobs[i].run()
-		}
+	for _, job := range runnableJobs {
+		job.run()
 	}
 }
 
-// Run all jobs regardless if they are scheduled to run or not
+// RunAll - Run all jobs regardless if they are scheduled to run or not
 func (s *Scheduler) RunAll() {
-	for i := 0; i < s.size; i++ {
-		s.jobs[i].run()
+	for _, job := range s.jobs {
+		job.run()
 	}
 }
 
-// Run all jobs with delay seconds
+// RunAllwithDelay - Run all jobs with delay seconds
 func (s *Scheduler) RunAllwithDelay(d int) {
-	for i := 0; i < s.size; i++ {
-		s.jobs[i].run()
+	for _, job := range s.jobs {
+		job.run()
 		time.Sleep(time.Duration(d))
 	}
 }
 
 // Remove specific job j
 func (s *Scheduler) Remove(j interface{}) {
-	i := 0
-	for ; i < s.size; i++ {
-		if s.jobs[i].jobFunc == getFunctionName(j) {
+	var i int
+	var job *Job
+	for i, job = range s.jobs {
+		if job.jobFunc == getFunctionName(j) {
 			break
 		}
 	}
 
-	for j := (i + 1); j < s.size; j++ {
-		s.jobs[i] = s.jobs[j]
-		i++
-	}
-	s.size = s.size - 1
+	s.jobs = append(s.jobs[:i], s.jobs[i+1:]...)
 }
 
-// Delete all scheduled jobs
+// Clear - Delete all scheduled jobs
 func (s *Scheduler) Clear() {
-	for i := 0; i < s.size; i++ {
-		s.jobs[i] = nil
-	}
-	s.size = 0
+	s.jobs = []*Job{}
 }
 
 // Start all the pending jobs
@@ -502,12 +499,12 @@ func (s *Scheduler) Start() chan bool {
 var defaultScheduler = NewScheduler()
 var jobs = defaultScheduler.jobs
 
-// Schedule a new periodic job
+// Every - Schedule a new periodic job
 func Every(interval uint64) *Job {
 	return defaultScheduler.Every(interval)
 }
 
-// Run all jobs that are scheduled to run
+// RunPending - Run all jobs that are scheduled to run
 //
 // Please note that it is *intended behavior that run_pending()
 // does not run missed jobs*. For example, if you've registered a job
@@ -518,12 +515,12 @@ func RunPending() {
 	defaultScheduler.RunPending()
 }
 
-// Run all jobs regardless if they are scheduled to run or not.
+// RunAll - Run all jobs regardless if they are scheduled to run or not.
 func RunAll() {
 	defaultScheduler.RunAll()
 }
 
-// Run all the jobs with a delay in seconds
+// RunAllwithDelay - Run all the jobs with a delay in seconds
 //
 // A delay of `delay` seconds is added between each job. This can help
 // to distribute the system load generated by the jobs more evenly over
@@ -532,17 +529,17 @@ func RunAllwithDelay(d int) {
 	defaultScheduler.RunAllwithDelay(d)
 }
 
-// Run all jobs that are scheduled to run
+// Start - Run all jobs that are scheduled to run
 func Start() chan bool {
 	return defaultScheduler.Start()
 }
 
-// Clear
+// Clear -
 func Clear() {
 	defaultScheduler.Clear()
 }
 
-// Remove
+// Remove -
 func Remove(j interface{}) {
 	defaultScheduler.Remove(j)
 }
